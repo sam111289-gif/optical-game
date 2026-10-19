@@ -1,0 +1,2020 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>光學濾鏡數字密碼戰 - 5x5 顏色方塊闖關遊戲</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <!-- Canvas Confetti -->
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              red: '#EF4444',
+              green: '#22C55E',
+              blue: '#3B82F6',
+              black: '#1E293B',
+              white: '#F8FAFC'
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    /* Prevent unwanted touch actions for smooth dragging on tablets */
+    .touch-none {
+      touch-action: none;
+    }
+    .user-select-none {
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    /* Grid cell aspect ratio & styling */
+    .board-cell {
+      aspect-ratio: 1 / 1;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    /* Realistic filter shine overlay */
+    .filter-acrylic {
+      box-shadow: inset 0 0 25px rgba(255, 255, 255, 0.35), 0 10px 30px rgba(0, 0, 0, 0.25);
+      backdrop-filter: blur(1px);
+    }
+    /* Tile color shadow effects */
+    .tile-red { background-color: #EF4444; border-color: #DC2626; }
+    .tile-green { background-color: #22C55E; border-color: #16A34A; }
+    .tile-blue { background-color: #3B82F6; border-color: #2563EB; }
+    .tile-black { background-color: #1E293B; border-color: #0F172A; }
+    .tile-white { background-color: #F8FAFC; border-color: #CBD5E1; color: #64748B; }
+
+    /* Dragging ghost */
+    #drag-ghost {
+      position: fixed;
+      pointer-events: none;
+      z-index: 9999;
+      transform: translate(-50%, -50%);
+      transition: transform 0.05s ease;
+      display: none;
+    }
+    /* Custom scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #CBD5E1;
+      border-radius: 9999px;
+    }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800 min-h-screen font-sans flex flex-col user-select-none">
+
+  <!-- Floating Drag Ghost element for Touch/Pointer dragging -->
+  <div id="drag-ghost" class="w-14 h-14 rounded-xl shadow-2xl border-4 border-white/80 flex items-center justify-center font-bold text-white text-lg"></div>
+
+  <!-- Top Navigation & Header -->
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
+    <div class="max-w-5xl mx-auto px-4 py-2.5 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-rose-500 via-emerald-500 to-sky-500 flex items-center justify-center text-white shadow-md font-black text-xl">
+          🎨
+        </div>
+        <div>
+          <h1 class="text-lg md:text-xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
+            光學濾鏡數字密碼戰
+            <span class="text-xs bg-indigo-100 text-indigo-700 font-semibold px-2 py-0.5 rounded-full hidden sm:inline-block">5×5 益智闖關</span>
+          </h1>
+          <p class="text-xs text-slate-500 hidden sm:block">利用色彩吸收與穿透光學原理，排解神秘數字！</p>
+        </div>
+      </div>
+
+      <!-- Action buttons -->
+      <div class="flex items-center space-x-2">
+        <button id="btn-sound" class="p-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 transition flex items-center justify-center" title="開關音效">
+          <span id="sound-icon" class="text-lg">🔊</span>
+        </button>
+        <button id="btn-help" class="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold flex items-center gap-1 transition">
+          <span>❓</span>
+          <span>規則說明</span>
+        </button>
+        <button id="btn-guide" class="px-3 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-xs font-semibold flex items-center gap-1 transition">
+          <span>💡</span>
+          <span>字形參考</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Level Progress & Current Target Bar -->
+  <div class="bg-indigo-900 text-white shadow-inner py-3 px-4">
+    <div class="max-w-5xl mx-auto flex flex-wrap items-center justify-between gap-3">
+      <!-- Level Steps -->
+      <div class="flex items-center space-x-2">
+        <span class="text-xs font-semibold text-indigo-200 uppercase tracking-wider">關卡進度</span>
+        <div class="flex items-center space-x-1.5">
+          <div id="step-1" class="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold bg-white text-indigo-900 shadow">1</div>
+          <div class="w-4 h-0.5 bg-indigo-700" id="step-line-1"></div>
+          <div id="step-2" class="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold bg-indigo-800 text-indigo-300">2</div>
+          <div class="w-4 h-0.5 bg-indigo-700" id="step-line-2"></div>
+          <div id="step-3" class="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold bg-indigo-800 text-indigo-300">3</div>
+        </div>
+      </div>
+
+      <!-- Target Banner -->
+      <div class="flex items-center flex-wrap gap-2 sm:gap-4 bg-indigo-950/60 border border-indigo-700/50 rounded-xl px-3 py-1.5">
+        <div class="flex items-center space-x-2">
+          <span class="text-xs text-indigo-300 font-medium">目標數字：</span>
+          <span id="target-digit-badge" class="w-8 h-8 rounded-lg bg-amber-400 text-slate-900 font-black text-xl flex items-center justify-center shadow">
+            2
+          </span>
+        </div>
+        <div class="h-4 w-px bg-indigo-700"></div>
+        <div class="flex items-center space-x-2">
+          <span class="text-xs text-indigo-300 font-medium">指定濾鏡：</span>
+          <span id="target-filter-badge" class="px-2.5 py-1 rounded-lg font-bold text-xs flex items-center gap-1.5 shadow bg-rose-600 text-white">
+            <span class="w-2.5 h-2.5 rounded-full bg-white animate-pulse"></span>
+            <span id="target-filter-text">紅色濾鏡</span>
+          </span>
+        </div>
+        <div class="h-4 w-px bg-indigo-700"></div>
+        <div class="flex items-center space-x-2">
+          <span class="text-xs text-indigo-300 font-medium">顯現字色：</span>
+          <span id="target-color-badge" class="px-2.5 py-1 rounded-lg font-bold text-xs flex items-center gap-1.5 shadow bg-slate-950 text-white border border-slate-700">
+            <span id="target-color-dot" class="w-2.5 h-2.5 rounded-full bg-slate-400"></span>
+            <span id="target-color-text">黑色字</span>
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Game Container -->
+    <!-- Main Game Container: 3-column / 2-column responsive layout -->
+  <main class="max-w-6xl mx-auto px-4 py-5 flex-1 w-full grid grid-cols-1 md:grid-cols-12 gap-5 items-start">
+    
+    <!-- COL 1: Reference Target Answer Board (4 cols on desktop) -->
+    <section class="md:col-span-5 lg:col-span-4 flex flex-col space-y-4">
+      
+      <!-- Target Filtered Effect Card (套上濾鏡後的效果畫面) -->
+      <div class="bg-white rounded-3xl p-4 sm:p-5 shadow-sm border-2 border-indigo-300 flex flex-col items-center relative overflow-hidden">
+        
+        <!-- Header -->
+        <div class="w-full flex items-center justify-between mb-2">
+          <div class="flex items-center gap-1.5 font-bold text-slate-900 text-sm">
+            <span class="text-lg">🎯</span>
+            <span>目標透視效果（濾鏡畫面）</span>
+          </div>
+          <span id="target-screen-filter-pill" class="text-[11px] font-black px-2.5 py-0.5 rounded-full bg-rose-600 text-white shadow-sm flex items-center gap-1">
+            <span>🔴</span><span id="target-screen-filter-name">紅色濾鏡</span>
+          </span>
+        </div>
+
+        <p class="text-xs text-slate-600 mb-3 w-full text-left leading-relaxed">
+          下方為<strong>套上指定濾鏡後必須呈現的目標畫面</strong>。請在右方操作盤中擺放方塊，使套上濾鏡後產生<strong>一模一樣的結果</strong>！
+        </p>
+
+        <!-- Target Filtered 5x5 Grid Frame -->
+        <div class="relative bg-slate-950 p-3 rounded-2xl shadow-xl border-2 border-slate-700 w-full max-w-[280px] filter-acrylic">
+          <div id="reference-grid" class="grid grid-cols-5 gap-1.5 w-full select-none">
+            <!-- 25 filtered target cells injected by JS -->
+          </div>
+
+          <!-- Glossy reflection stripe -->
+          <div class="absolute -top-20 -left-20 w-44 h-72 bg-gradient-to-r from-transparent via-white/15 to-transparent transform -rotate-45 pointer-events-none"></div>
+        </div>
+
+        <!-- Optical Deduction Legend for Target Screen -->
+        <div class="w-full max-w-[280px] mt-3 p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-[11px] space-y-1.5 text-left">
+          <div class="font-bold text-slate-800 flex items-center justify-between">
+            <span>💡 逆向推導指南：</span>
+            <span id="target-deduction-mode" class="text-indigo-600 font-black">黑色字 / 亮色底</span>
+          </div>
+          <div class="flex items-start gap-1 text-slate-600">
+            <span id="legend-bright-dot" class="w-3 h-3 rounded-sm bg-rose-600 flex-shrink-0 mt-0.5"></span>
+            <span id="legend-bright-desc"><strong>亮色格：</strong>在白光下可放【紅色】或【白色】</span>
+          </div>
+          <div class="flex items-start gap-1 text-slate-600">
+            <span class="w-3 h-3 rounded-sm bg-slate-950 flex-shrink-0 mt-0.5 border border-slate-700"></span>
+            <span id="legend-dark-desc"><strong>暗色格：</strong>在白光下可放【綠色、藍色、黑色】</span>
+          </div>
+          <div class="text-[10px] text-rose-700 font-bold pt-0.5 border-t border-slate-200">
+            🔒 紅綠藍各 5 個必須全部放進盤面中！
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick Optical Cheat-Sheet -->
+      <div class="bg-gradient-to-br from-indigo-50 via-slate-50 to-purple-50 rounded-3xl p-4 shadow-sm border border-indigo-100">
+        <h3 class="text-xs font-bold uppercase tracking-wider text-indigo-900 mb-1.5 flex items-center gap-1">
+          <span>🔬</span> 光學原理小卡
+        </h3>
+        <div id="rule-dynamic-box" class="p-2.5 rounded-xl bg-white border border-indigo-200 shadow-sm text-xs space-y-1">
+          <!-- Filled by JS -->
+        </div>
+        <div class="mt-2 text-right">
+          <button id="btn-show-full-table" class="text-[11px] text-indigo-600 hover:text-indigo-800 font-bold underline">
+            查看三種濾鏡完整對照表 ➔
+          </button>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- COL 2: Student Interactive Board (5 cols on desktop) -->
+    <section class="md:col-span-7 lg:col-span-5 flex flex-col items-center">
+      
+      <!-- Board Status / Match Score Pill -->
+      <div class="w-full flex items-center justify-between mb-2 px-1">
+        <div class="flex items-center gap-1.5 flex-wrap">
+          <span class="text-sm font-bold text-slate-800 flex items-center gap-1">
+            <span>✏️</span> 你的操作方格盤
+          </span>
+          <span id="board-count-pill" class="text-[11px] font-medium px-2 py-0.5 rounded-full bg-slate-200 text-slate-700">
+            已放: 0 / 25
+          </span>
+          <span id="match-score-pill" class="text-xs font-bold px-2 py-0.5 rounded-full bg-slate-200 text-slate-700 transition">
+            濾鏡吻合度: 0 / 25
+          </span>
+        </div>
+
+        <div id="filter-status-indicator" class="text-xs font-semibold px-2.5 py-1 rounded-full bg-slate-200 text-slate-600 flex items-center gap-1.5 transition">
+          <span class="w-2 h-2 rounded-full bg-slate-400"></span>
+          <span>白光視角</span>
+        </div>
+      </div>
+
+      <!-- Mandatory RGB Constraint Tracker Bar -->
+      <div id="rgb-requirement-bar" class="w-full max-w-[420px] mb-2.5 px-3 py-1.5 rounded-2xl bg-amber-50 border border-amber-200 text-xs flex flex-wrap items-center justify-between gap-1 transition shadow-sm">
+        <div class="flex items-center gap-1 font-bold text-amber-900">
+          <span id="rgb-icon">⚠️</span>
+          <span id="rgb-main-text">紅綠藍三色必須全用：</span>
+        </div>
+        <div id="rgb-status-badges" class="flex items-center gap-1 font-semibold text-[11px]">
+          <span id="badge-red-status" class="px-1.5 py-0.5 rounded-md bg-rose-100 text-rose-800 border border-rose-200">🔴 紅 0/5</span>
+          <span id="badge-green-status" class="px-1.5 py-0.5 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-200">🟢 綠 0/5</span>
+          <span id="badge-blue-status" class="px-1.5 py-0.5 rounded-md bg-blue-100 text-blue-800 border border-blue-200">🔵 藍 0/5</span>
+        </div>
+      </div>
+
+      <!-- The 5x5 Board Frame with Relative Positioning for Filter Overlay -->
+      <div id="player-board-frame" class="relative bg-slate-800 p-3.5 rounded-3xl shadow-xl border-4 border-slate-700 w-full max-w-[420px] transition-all">
+        
+        <!-- Interactive 5x5 Grid -->
+        <div id="game-grid" class="grid grid-cols-5 gap-2 w-full touch-none">
+          <!-- 25 cells injected dynamically by JS -->
+        </div>
+
+        <!-- Filter Overlay Layer (Shown when filter is ON) -->
+        <div id="filter-overlay" class="absolute inset-0 rounded-3xl pointer-events-none opacity-0 transition-opacity duration-300 flex flex-col items-center justify-between p-3 filter-acrylic overflow-hidden">
+          <div class="w-full flex justify-between items-center z-10 px-2 pt-1">
+            <span id="filter-overlay-title" class="bg-black/60 text-white font-bold text-xs px-3 py-1 rounded-full backdrop-blur-md shadow flex items-center gap-1">
+              <span>🔍</span>
+              <span id="filter-overlay-name">紅色濾鏡透視中</span>
+            </span>
+            <span class="bg-black/40 text-white/90 text-[10px] px-2 py-0.5 rounded backdrop-blur-md">
+              光學穿透模擬
+            </span>
+          </div>
+
+          <div class="absolute -top-32 -left-32 w-64 h-96 bg-gradient-to-r from-transparent via-white/20 to-transparent transform -rotate-45 pointer-events-none"></div>
+
+          <div class="w-full text-center z-10 pb-1">
+            <span class="bg-black/60 text-white text-xs px-3 py-1 rounded-full backdrop-blur-md shadow">
+              檢驗是否呈現出目標數字
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Action Buttons below Player Grid -->
+      <div class="grid grid-cols-3 gap-2 mt-3.5 w-full max-w-[420px]">
+        <button id="btn-clear-board" class="py-2 px-2 sm:px-3 rounded-xl bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 text-xs font-bold shadow-sm transition active:scale-95 flex items-center justify-center gap-1">
+          <span>🔄</span>
+          <span>重設方格</span>
+        </button>
+
+        <button id="btn-toggle-filter" class="py-2 px-2 sm:px-3 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white text-xs font-bold shadow-md transition active:scale-95 flex items-center justify-center gap-1">
+          <span id="filter-btn-icon" class="text-sm">🔍</span>
+          <span id="filter-btn-text">開濾鏡檢查</span>
+        </button>
+
+        <button id="btn-manual-next" class="py-2 px-2 sm:px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-md transition active:scale-95 flex items-center justify-center gap-1">
+          <span id="manual-next-text">進入下一關</span>
+          <span id="manual-next-icon">➔</span>
+        </button>
+      </div>
+
+      <!-- Feedback Banner -->
+      <div id="feedback-box" class="w-full max-w-[420px] mt-3 p-3 rounded-2xl bg-white border border-slate-200 shadow-sm text-xs sm:text-sm text-slate-700 flex items-start gap-2.5">
+        <span class="text-lg flex-shrink-0" id="feedback-icon">💡</span>
+        <div class="flex-1">
+          <div class="font-bold text-slate-900 mb-0.5" id="feedback-title">闖關指引</div>
+          <div id="feedback-msg" class="text-slate-600 text-xs leading-relaxed">
+            請觀察左側「目標透視效果」，思考各顏色在濾鏡下的亮暗變化，排好方塊後點擊「開濾鏡檢查」，做出與目標一模一樣的結果！
+          </div>
+        </div>
+      </div>
+
+      <!-- Level Clear Card -->
+      <div id="level-clear-card" class="hidden w-full max-w-[420px] mt-3 bg-emerald-50 border-2 border-emerald-400 rounded-3xl p-4 shadow-md flex flex-col items-center text-center animate-bounce-once">
+        <div class="text-3xl mb-1">🎉</div>
+        <h3 class="text-sm font-black text-emerald-900">100% 吻合！成功做出目標效果！</h3>
+        <p class="text-xs text-emerald-700 mt-1 mb-2.5">你在濾鏡下呈現的明暗透視畫面與題目目標完全一致！</p>
+        <button id="btn-next-level" class="w-full py-2 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow transition active:scale-95 flex items-center justify-center gap-1">
+          <span>進入下一關</span>
+          <span>➔</span>
+        </button>
+      </div>
+
+    </section>
+
+    <!-- COL 3: Palette & Tools (3 cols on desktop) -->
+    <section class="md:col-span-12 lg:col-span-3 flex flex-col space-y-3">
+      
+      <!-- Palette & Inventory Card -->
+      <div class="bg-white rounded-3xl p-4 shadow-sm border border-slate-200">
+        <div class="flex items-center justify-between mb-2.5">
+          <h2 class="text-xs font-bold text-slate-900 flex items-center gap-1">
+            <span>📦</span> 可用方塊庫
+          </h2>
+          <span id="inventory-total-label" class="text-[10px] font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">
+            紅綠藍各5個(必全用)・黑白不限
+          </span>
+        </div>
+
+        <!-- 5 Color Tiles Grid -->
+        <div class="grid grid-cols-5 lg:grid-cols-2 gap-2">
+          
+          <!-- Red Block -->
+          <div id="palette-red" data-color="red" class="palette-item flex flex-col items-center p-2 rounded-2xl border-2 border-slate-200 bg-slate-50 hover:bg-slate-100 cursor-pointer transition active:scale-95 touch-none relative">
+            <div class="w-9 h-9 rounded-xl tile-red shadow-sm border flex items-center justify-center text-white font-bold text-xs mb-1">
+              🔴
+            </div>
+            <span class="text-xs font-bold text-slate-800">紅</span>
+            <span id="count-red" class="text-[11px] font-semibold text-rose-600 bg-rose-50 px-1.5 py-0.2 rounded-full mt-0.5">5</span>
+          </div>
+
+          <!-- Green Block -->
+          <div id="palette-green" data-color="green" class="palette-item flex flex-col items-center p-2 rounded-2xl border-2 border-slate-200 bg-slate-50 hover:bg-slate-100 cursor-pointer transition active:scale-95 touch-none relative">
+            <div class="w-9 h-9 rounded-xl tile-green shadow-sm border flex items-center justify-center text-white font-bold text-xs mb-1">
+              🟢
+            </div>
+            <span class="text-xs font-bold text-slate-800">綠</span>
+            <span id="count-green" class="text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-1.5 py-0.2 rounded-full mt-0.5">5</span>
+          </div>
+
+          <!-- Blue Block -->
+          <div id="palette-blue" data-color="blue" class="palette-item flex flex-col items-center p-2 rounded-2xl border-2 border-slate-200 bg-slate-50 hover:bg-slate-100 cursor-pointer transition active:scale-95 touch-none relative">
+            <div class="w-9 h-9 rounded-xl tile-blue shadow-sm border flex items-center justify-center text-white font-bold text-xs mb-1">
+              🔵
+            </div>
+            <span class="text-xs font-bold text-slate-800">藍</span>
+            <span id="count-blue" class="text-[11px] font-semibold text-blue-600 bg-blue-50 px-1.5 py-0.2 rounded-full mt-0.5">5</span>
+          </div>
+
+          <!-- Black Block -->
+          <div id="palette-black" data-color="black" class="palette-item flex flex-col items-center p-2 rounded-2xl border-2 border-slate-200 bg-slate-50 hover:bg-slate-100 cursor-pointer transition active:scale-95 touch-none relative">
+            <div class="w-9 h-9 rounded-xl tile-black shadow-sm border flex items-center justify-center text-white font-bold text-xs mb-1">
+              ⚫
+            </div>
+            <span class="text-xs font-bold text-slate-800">黑</span>
+            <span id="count-black" class="text-[11px] font-semibold text-slate-700 bg-slate-200 px-1.5 py-0.2 rounded-full mt-0.5" title="不限數量">∞</span>
+          </div>
+
+          <!-- White Block -->
+          <div id="palette-white" data-color="white" class="palette-item flex flex-col items-center p-2 rounded-2xl border-2 border-slate-200 bg-slate-50 hover:bg-slate-100 cursor-pointer transition active:scale-95 touch-none relative lg:col-span-2">
+            <div class="w-9 h-9 rounded-xl tile-white shadow-sm border flex items-center justify-center text-slate-600 font-bold text-xs mb-1">
+              ⚪
+            </div>
+            <span class="text-xs font-bold text-slate-800">白</span>
+            <span id="count-white" class="text-[11px] font-semibold text-indigo-700 bg-indigo-50 px-1.5 py-0.2 rounded-full mt-0.5" title="不限數量">∞</span>
+          </div>
+
+        </div>
+
+        <!-- Tool Mode Switch -->
+        <div class="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs">
+          <div class="flex items-center gap-1 text-slate-600 font-medium">
+            <span>畫筆：</span>
+            <span id="active-brush-badge" class="px-1.5 py-0.5 rounded-lg bg-rose-100 text-rose-800 font-bold border border-rose-300 text-[11px]">
+              🔴 紅色
+            </span>
+          </div>
+
+          <button id="btn-eraser" class="px-2 py-0.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 font-semibold flex items-center gap-1 transition text-xs">
+            <span>🧹</span>
+            <span>橡皮擦(清除格)</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Quick Tips Card -->
+      <div class="bg-white rounded-3xl p-3.5 shadow-sm border border-slate-200 text-xs text-slate-600 space-y-1.5">
+        <div class="font-bold text-slate-900 flex items-center gap-1">
+          <span>💡</span> 拼圖提示
+        </div>
+        <p class="leading-relaxed text-[11px]">
+          1. 左側為<strong>濾鏡下的目標結果</strong>（只有濾鏡色與黑色）。<br>
+          2. 請利用穿透與吸收原理，在操作盤擺放方塊，使套上濾鏡後做出<strong>完全一樣的視覺效果</strong>！
+        </p>
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- MODAL: Mission Start / Level Intro Modal -->
+  <div id="modal-mission" class="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100 flex flex-col items-center text-center animate-scale-up">
+      <div class="w-14 h-14 rounded-2xl bg-indigo-100 text-indigo-600 font-black text-2xl flex items-center justify-center mb-3 shadow-inner">
+        🎯
+      </div>
+      
+      <span id="modal-level-badge" class="text-xs font-bold px-3 py-1 rounded-full bg-indigo-100 text-indigo-800 uppercase tracking-wider mb-1">
+        第 1 關 / 共 3 關
+      </span>
+      <h2 class="text-xl font-black text-slate-900 mb-1">光學逆向任務發布！</h2>
+      <p class="text-xs text-slate-500 mb-4">左側已給出【套上濾鏡後的目標效果】，請排布方塊做出【一模一樣的結果】！</p>
+
+      <!-- Mission Spec Box -->
+      <div class="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3.5 mb-3 grid grid-cols-3 gap-2">
+        <div class="flex flex-col items-center p-2 rounded-xl bg-white shadow-sm border border-slate-100">
+          <span class="text-[11px] text-slate-400 font-medium">目標數字</span>
+          <span id="modal-target-digit" class="text-2xl font-black text-amber-500 mt-1">2</span>
+        </div>
+        <div class="flex flex-col items-center p-2 rounded-xl bg-white shadow-sm border border-slate-100">
+          <span class="text-[11px] text-slate-400 font-medium">指定濾鏡</span>
+          <span id="modal-target-filter" class="text-xs sm:text-sm font-black text-rose-600 mt-1.5">🔴 紅色</span>
+        </div>
+        <div class="flex flex-col items-center p-2 rounded-xl bg-white shadow-sm border border-slate-100">
+          <span class="text-[11px] text-slate-400 font-medium">顯現字色</span>
+          <span id="modal-target-color" class="text-xs sm:text-sm font-black text-slate-900 mt-1.5">⚫ 黑色字</span>
+        </div>
+      </div>
+
+      <!-- Core Constraint Callout in Modal -->
+      <div class="w-full p-2.5 rounded-xl bg-indigo-50 border border-indigo-200 text-xs text-indigo-900 font-bold mb-3 flex items-center justify-center gap-1.5 shadow-sm">
+        <span>🔍</span>
+        <span>挑戰目標：排出的方塊在套上濾鏡後，必須與左側目標畫面 100% 相同！</span>
+      </div>
+
+      <!-- Physics Tip -->
+      <div id="modal-physics-tip" class="w-full p-3 rounded-xl bg-amber-50 border border-amber-200 text-left text-xs text-amber-900 mb-5 leading-relaxed">
+        💡 提示：在紅色濾鏡下，<strong>紅色與白色</strong>會呈現紅色（亮色），而<strong>綠、藍、黑</strong>會被吸收呈現黑色（暗色）！利用黑白或色彩明暗對比勾勒出數字！
+      </div>
+
+      <button id="btn-start-level" class="w-full py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm shadow-md transition active:scale-95">
+        開始挑戰！
+      </button>
+    </div>
+  </div>
+
+  <!-- MODAL: Reference Digit Shapes & Full Color Table -->
+  <div id="modal-guide" class="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-6 shadow-2xl border border-slate-100">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+        <div class="flex items-center gap-2">
+          <span class="text-xl">💡</span>
+          <h2 class="text-base font-bold text-slate-900">5×5 數字字形與光學對照表</h2>
+        </div>
+        <button id="btn-close-guide" class="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 font-bold flex items-center justify-center transition">
+          ✕
+        </button>
+      </div>
+
+      <!-- Standard 0-9 Shape Gallery -->
+      <div class="mb-5">
+        <h3 class="text-xs font-bold text-slate-800 mb-2 flex items-center justify-between">
+          <span>標準 5×5 像素數字參考 (3×5 置中)：</span>
+          <span class="text-[11px] font-normal text-indigo-600">深色為數字 / 淺色為背景</span>
+        </h3>
+        
+        <div id="guide-digits-grid" class="grid grid-cols-5 gap-2.5 bg-slate-50 p-3 rounded-2xl border border-slate-200">
+          <!-- Injected by JS: mini 5x5 preview for 0-9 -->
+        </div>
+      </div>
+
+      <!-- Optics Table: 5 Colors Under 3 Filters -->
+      <div>
+        <h3 class="text-xs font-bold text-slate-800 mb-2">五種方塊在三種濾鏡下的視覺色彩：</h3>
+        <div class="overflow-x-auto rounded-xl border border-slate-200">
+          <table class="w-full text-xs text-left border-collapse">
+            <thead>
+              <tr class="bg-slate-100 text-slate-700">
+                <th class="p-2 border-b">方塊顏色</th>
+                <th class="p-2 border-b text-rose-600 font-bold">🔴 紅色濾鏡</th>
+                <th class="p-2 border-b text-emerald-600 font-bold">🟢 綠色濾鏡</th>
+                <th class="p-2 border-b text-blue-600 font-bold">🔵 藍色濾鏡</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100 text-slate-800">
+              <tr>
+                <td class="p-2 font-medium flex items-center gap-1.5">
+                  <span class="w-3.5 h-3.5 rounded bg-red-500"></span> 紅色 (5)
+                </td>
+                <td class="p-2 text-rose-600 font-bold bg-rose-50/50">紅色 (亮)</td>
+                <td class="p-2 text-slate-900 font-bold">黑色 (暗)</td>
+                <td class="p-2 text-slate-900 font-bold">黑色 (暗)</td>
+              </tr>
+              <tr>
+                <td class="p-2 font-medium flex items-center gap-1.5">
+                  <span class="w-3.5 h-3.5 rounded bg-emerald-500"></span> 綠色 (5)
+                </td>
+                <td class="p-2 text-slate-900 font-bold">黑色 (暗)</td>
+                <td class="p-2 text-emerald-600 font-bold bg-emerald-50/50">綠色 (亮)</td>
+                <td class="p-2 text-slate-900 font-bold">黑色 (暗)</td>
+              </tr>
+              <tr>
+                <td class="p-2 font-medium flex items-center gap-1.5">
+                  <span class="w-3.5 h-3.5 rounded bg-blue-500"></span> 藍色 (5)
+                </td>
+                <td class="p-2 text-slate-900 font-bold">黑色 (暗)</td>
+                <td class="p-2 text-slate-900 font-bold">黑色 (暗)</td>
+                <td class="p-2 text-blue-600 font-bold bg-blue-50/50">藍色 (亮)</td>
+              </tr>
+              <tr>
+                <td class="p-2 font-medium flex items-center gap-1.5">
+                  <span class="w-3.5 h-3.5 rounded bg-slate-800"></span> 黑色 (不限數量)
+                </td>
+                <td class="p-2 text-slate-900 font-bold">黑色 (暗)</td>
+                <td class="p-2 text-slate-900 font-bold">黑色 (暗)</td>
+                <td class="p-2 text-slate-900 font-bold">黑色 (暗)</td>
+              </tr>
+              <tr>
+                <td class="p-2 font-medium flex items-center gap-1.5">
+                  <span class="w-3.5 h-3.5 rounded bg-white border border-slate-300"></span> 白色 (不限數量)
+                </td>
+                <td class="p-2 text-rose-600 font-bold bg-rose-50/50">紅色 (亮)</td>
+                <td class="p-2 text-emerald-600 font-bold bg-emerald-50/50">綠色 (亮)</td>
+                <td class="p-2 text-blue-600 font-bold bg-blue-50/50">藍色 (亮)</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="mt-5 text-center">
+        <button id="btn-close-guide-footer" class="py-2 px-6 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs transition">
+          我瞭解了，回到遊戲
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: Rules & Help Tutorial -->
+  <div id="modal-rules" class="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+        <div class="flex items-center gap-2">
+          <span class="text-xl">📖</span>
+          <h2 class="text-base font-bold text-slate-900">遊戲玩法與規則</h2>
+        </div>
+        <button id="btn-close-rules" class="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 font-bold flex items-center justify-center transition">
+          ✕
+        </button>
+      </div>
+
+      <div class="space-y-3 text-xs text-slate-600 leading-relaxed">
+        <div class="flex gap-2">
+          <span class="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 font-bold flex items-center justify-center flex-shrink-0">1</span>
+          <p><strong class="text-slate-800">題目目標：</strong>每關左側直接顯示<strong>「套上濾鏡後的目標效果圖」</strong>（畫面中由濾鏡亮色與黑色構成神秘數字）。</p>
+        </div>
+        <div class="flex gap-2">
+          <span class="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 font-bold flex items-center justify-center flex-shrink-0">2</span>
+          <p><strong class="text-slate-800">放置方塊與顏色限制：</strong>方格盤為 5×5=25 格。<strong>紅、綠、藍三種顏色各 5 個【必須全部用完】</strong>（共佔 15 格）；<strong>黑、白方塊【不限數量】</strong>，可隨心所欲自由搭配填滿剩餘的 10 格！</p>
+        </div>
+        <div class="flex gap-2">
+          <span class="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 font-bold flex items-center justify-center flex-shrink-0">3</span>
+          <p><strong class="text-slate-800">逆向排布與通關：</strong>思考哪些方塊在濾鏡下會穿透變亮、哪些會被吸收變黑。排好後點擊「開濾鏡檢查」，只要濾鏡下的效果與左側目標【一模一樣】，且紅綠藍各用滿 5 個，即大功告成！也可自主點擊「進入下一關」。</p>
+        </div>
+        <div class="flex gap-2">
+          <span class="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 font-bold flex items-center justify-center flex-shrink-0">4</span>
+          <p><strong class="text-slate-800">調整方塊：</strong>若想拿掉方塊，可點選「橡皮擦」後點擊該格，或拖曳方塊移出棋盤外，方塊會自動退回方塊庫中。</p>
+        </div>
+      </div>
+
+      <div class="mt-5 text-center">
+        <button id="btn-close-rules-footer" class="py-2.5 px-6 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow transition">
+          開始遊戲！
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: Final Victory Certificate Screen -->
+  <div id="modal-victory" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-md hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-md w-full p-6 sm:p-8 shadow-2xl border border-slate-100 flex flex-col items-center text-center">
+      <div class="text-5xl mb-2 animate-bounce">🏆</div>
+      <span class="text-xs font-bold px-3 py-1 rounded-full bg-amber-100 text-amber-800 uppercase tracking-wider mb-2">
+        恭喜全數通關！
+      </span>
+      <h2 class="text-2xl font-black text-slate-900 mb-1">光學密碼大師認證！</h2>
+      <p class="text-xs text-slate-500 mb-5">你成功破解了全部三關的色彩濾鏡密碼！</p>
+
+      <!-- Level completion breakdown -->
+      <div id="victory-summary-list" class="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 mb-5 space-y-2.5 text-xs text-left">
+        <!-- Injected by JS -->
+      </div>
+
+      <div class="w-full p-3 rounded-2xl bg-indigo-50 border border-indigo-200 text-xs text-indigo-900 text-left mb-6 leading-relaxed">
+        🎓 <strong>科學小結：</strong>恭喜你掌握了光的三原色與濾鏡原理！當白光穿透濾鏡時，僅有該濾鏡顏色的光能通過，其餘色光被吸收呈現暗色，這就是防偽防窺、色彩密碼與影棚特效的核心物理原理！
+      </div>
+
+      <button id="btn-play-again" class="w-full py-3.5 rounded-2xl bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:opacity-95 text-white font-bold text-sm shadow-lg transition active:scale-95 flex items-center justify-center gap-2">
+        <span>🔄</span>
+        <span>再玩一次 (全新隨機關卡)</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- JavaScript Code -->
+  <script>
+    // --- 1. Sound FX System (Synthesized Web Audio API) ---
+    class SoundEffects {
+      constructor() {
+        this.ctx = null;
+        this.enabled = true;
+      }
+      init() {
+        if (!this.ctx) {
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          if (AudioContext) {
+            this.ctx = new AudioContext();
+          }
+        }
+        if (this.ctx && this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+      }
+      playClick() {
+        if (!this.enabled) return;
+        this.init();
+        if (!this.ctx) return;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(440, this.ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(880, this.ctx.currentTime + 0.05);
+        gain.gain.setValueAtTime(0.15, this.ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.05);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start();
+        osc.stop(this.ctx.currentTime + 0.05);
+      }
+      playPop() {
+        if (!this.enabled) return;
+        this.init();
+        if (!this.ctx) return;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(320, this.ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(160, this.ctx.currentTime + 0.08);
+        gain.gain.setValueAtTime(0.12, this.ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.08);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start();
+        osc.stop(this.ctx.currentTime + 0.08);
+      }
+      playFilterShimmer() {
+        if (!this.enabled) return;
+        this.init();
+        if (!this.ctx) return;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(587.33, this.ctx.currentTime); // D5
+        osc.frequency.exponentialRampToValueAtTime(880, this.ctx.currentTime + 0.15); // A5
+        gain.gain.setValueAtTime(0.15, this.ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.18);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start();
+        osc.stop(this.ctx.currentTime + 0.18);
+      }
+      playSuccess() {
+        if (!this.enabled) return;
+        this.init();
+        if (!this.ctx) return;
+        const notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6
+        notes.forEach((freq, idx) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.value = freq;
+          const start = this.ctx.currentTime + idx * 0.09;
+          gain.gain.setValueAtTime(0.2, start);
+          gain.gain.exponentialRampToValueAtTime(0.001, start + 0.35);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(start);
+          osc.stop(start + 0.35);
+        });
+      }
+      playVictory() {
+        if (!this.enabled) return;
+        this.init();
+        if (!this.ctx) return;
+        const chord = [523.25, 659.25, 783.99, 1046.50, 1318.51];
+        chord.forEach((freq, idx) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.value = freq;
+          const start = this.ctx.currentTime + idx * 0.08;
+          gain.gain.setValueAtTime(0.18, start);
+          gain.gain.exponentialRampToValueAtTime(0.001, start + 0.6);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(start);
+          osc.stop(start + 0.6);
+        });
+      }
+    }
+
+    const sfx = new SoundEffects();
+
+    // --- 2. Digit Templates & Recognition Engine ---
+    // Standard 3x5 and variations for 0-9 centered in 5x5
+    const DIGIT_PATTERNS = {
+      0: [
+        '111/101/101/101/111',
+        '11/101/101/101/11',
+        '1111/1001/1001/1001/1111',
+        '0110/1001/1001/1001/0110',
+        '111/101/101/111'
+      ],
+      1: [
+        '1/1/1/1/1',
+        '11/01/01/01/111',
+        '01/11/01/01/111',
+        '1/11/01/01/111',
+        '01/11/01/01/01',
+        '11/01/01/01/01',
+        '1/1/1/1/11',
+        '01100/00100/00100/00100/11111', // 10-cell wide base 1 (5 green + 5 blue exact match!)
+        '00100/01100/00100/00100/11111',
+        '01100/10100/00100/00100/11111', // 11-cell bold 1
+        '0110/0010/0010/0010/1111',
+        '00110/00010/00010/00010/11111'
+      ],
+      2: [
+        '111/001/111/100/111', // canonical 2 from user's screenshot!
+        '111/001/011/100/111',
+        '111/001/111/100/011',
+        '011/101/001/010/111',
+        '11/01/11/10/11'
+      ],
+      3: [
+        '111/001/111/001/111',
+        '111/001/011/001/111',
+        '111/001/110/001/111',
+        '11/01/11/01/11'
+      ],
+      4: [
+        '101/101/111/001/001',
+        '100/101/111/001/001',
+        '10/10/11/01/01',
+        '101/111/001/001',
+        '101/101/111/001'
+      ],
+      5: [
+        '111/100/111/001/111',
+        '111/100/110/001/111',
+        '11/10/11/01/11',
+        '111/100/111/001/011'
+      ],
+      6: [
+        '111/100/111/101/111',
+        '011/100/111/101/111',
+        '100/100/111/101/111',
+        '11/10/11/11/11',
+        '10/10/11/11/11'
+      ],
+      7: [
+        '111/001/001/001/001',
+        '111/001/010/010/010',
+        '111/001/011/001/001',
+        '1111/0001/0010/0100/0100',
+        '11/01/01/01/01',
+        '11111/00010/00110/00100/00100', // 10-cell wide 7
+        '11111/00001/00010/00100/01000'
+      ],
+      8: [
+        '111/101/111/101/111',
+        '010/101/010/101/010',
+        '111/101/010/101/111',
+        '11/11/11/11/11'
+      ],
+      9: [
+        '111/101/111/001/111',
+        '111/101/111/001/001',
+        '111/101/111/001/011',
+        '11/11/11/01/11'
+      ]
+    };
+
+    // Helper: extract bounding box string from a 5x5 binary matrix (0/1)
+    function getBoundingBoxString(matrix) {
+      let minR = 5, maxR = -1, minC = 5, maxC = -1;
+      let count = 0;
+      for (let r = 0; r < 5; r++) {
+        for (let c = 0; c < 5; c++) {
+          if (matrix[r][c] === 1) {
+            count++;
+            if (r < minR) minR = r;
+            if (r > maxR) maxR = r;
+            if (c < minC) minC = c;
+            if (c > maxC) maxC = c;
+          }
+        }
+      }
+      if (count === 0) return null;
+
+      const rows = [];
+      for (let r = minR; r <= maxR; r++) {
+        let rowStr = '';
+        for (let c = minC; c <= maxC; c++) {
+          rowStr += matrix[r][c];
+        }
+        rows.push(rowStr);
+      }
+      return {
+        str: rows.join('/'),
+        count: count,
+        h: maxR - minR + 1,
+        w: maxC - minC + 1
+      };
+    }
+
+    // Evaluate what digit (if any) a 5x5 binary matrix matches
+    function matchDigitFromMatrix(matrix) {
+      const bbox = getBoundingBoxString(matrix);
+      if (!bbox) return null;
+
+      for (let d = 0; d <= 9; d++) {
+        const patterns = DIGIT_PATTERNS[d] || [];
+        for (const p of patterns) {
+          if (p === bbox.str) {
+            return d;
+          }
+        }
+      }
+      return null;
+    }
+
+    // --- 3. Game State & Logic ---
+    const INITIAL_INVENTORY = {
+      red: 5,
+      green: 5,
+      blue: 5,
+      black: Infinity,
+      white: Infinity
+    };
+
+    const gameState = {
+      level: 1,
+      totalLevels: 3,
+      targetDigit: 2,
+      targetFilter: 'red', // 'red' | 'green' | 'blue'
+      targetDigitColor: 'black', // 'black' | 'filter'
+      targetFilteredMatrix: Array(25).fill(0), // 25 elements: 1 = Bright (Filter color), 0 = Dark (Black)
+      matchCount: 0,
+      filterActive: false,
+      activeBrush: 'red',
+      eraserActive: false,
+      board: Array(25).fill(null), // 25 cells
+      inventory: { ...INITIAL_INVENTORY },
+      levelHistory: [],
+      levelCompleted: false
+    };
+
+    // --- 4. DOM Elements ---
+    const gameGridEl = document.getElementById('game-grid');
+    const filterOverlayEl = document.getElementById('filter-overlay');
+    const filterOverlayTitleEl = document.getElementById('filter-overlay-name');
+    const filterStatusIndicatorEl = document.getElementById('filter-status-indicator');
+    const btnToggleFilter = document.getElementById('btn-toggle-filter');
+    const filterBtnIcon = document.getElementById('filter-btn-icon');
+    const filterBtnText = document.getElementById('filter-btn-text');
+    const btnClearBoard = document.getElementById('btn-clear-board');
+    const boardCountPill = document.getElementById('board-count-pill');
+    const feedbackBox = document.getElementById('feedback-box');
+    const feedbackIcon = document.getElementById('feedback-icon');
+    const feedbackTitle = document.getElementById('feedback-title');
+    const feedbackMsg = document.getElementById('feedback-msg');
+    const activeBrushBadge = document.getElementById('active-brush-badge');
+    const btnEraser = document.getElementById('btn-eraser');
+    const ruleDynamicBox = document.getElementById('rule-dynamic-box');
+    const levelClearCard = document.getElementById('level-clear-card');
+    const btnNextLevel = document.getElementById('btn-next-level');
+
+    // Headers & Indicators
+    const targetDigitBadge = document.getElementById('target-digit-badge');
+    const targetFilterBadge = document.getElementById('target-filter-badge');
+    const targetFilterText = document.getElementById('target-filter-text');
+    const targetColorBadge = document.getElementById('target-color-badge');
+    const targetColorDot = document.getElementById('target-color-dot');
+    const targetColorText = document.getElementById('target-color-text');
+    const referenceGridEl = document.getElementById('reference-grid');
+    const matchScorePill = document.getElementById('match-score-pill');
+    const playerBoardFrame = document.getElementById('player-board-frame');
+    const btnManualNext = document.getElementById('btn-manual-next');
+    const manualNextText = document.getElementById('manual-next-text');
+    const manualNextIcon = document.getElementById('manual-next-icon');
+    const modalTargetColor = document.getElementById('modal-target-color');
+    const btnSound = document.getElementById('btn-sound');
+    const soundIcon = document.getElementById('sound-icon');
+    const btnHelp = document.getElementById('btn-help');
+    const btnGuide = document.getElementById('btn-guide');
+    const btnShowFullTable = document.getElementById('btn-show-full-table');
+
+    // Modals
+    const modalMission = document.getElementById('modal-mission');
+    const modalLevelBadge = document.getElementById('modal-level-badge');
+    const modalTargetDigit = document.getElementById('modal-target-digit');
+    const modalTargetFilter = document.getElementById('modal-target-filter');
+    const modalPhysicsTip = document.getElementById('modal-physics-tip');
+    const btnStartLevel = document.getElementById('btn-start-level');
+
+    const modalGuide = document.getElementById('modal-guide');
+    const btnCloseGuide = document.getElementById('btn-close-guide');
+    const btnCloseGuideFooter = document.getElementById('btn-close-guide-footer');
+    const guideDigitsGrid = document.getElementById('guide-digits-grid');
+
+    const modalRules = document.getElementById('modal-rules');
+    const btnCloseRules = document.getElementById('btn-close-rules');
+    const btnCloseRulesFooter = document.getElementById('btn-close-rules-footer');
+
+    const modalVictory = document.getElementById('modal-victory');
+    const victorySummaryList = document.getElementById('victory-summary-list');
+    const btnPlayAgain = document.getElementById('btn-play-again');
+
+    // Floating drag ghost
+    const dragGhost = document.getElementById('drag-ghost');
+    let pointerDragState = null;
+
+    // --- 5. Color Names & Optical Filter Rules Map ---
+    const COLOR_NAMES = {
+      red: '紅色',
+      green: '綠色',
+      blue: '藍色',
+      black: '黑色',
+      white: '白色'
+    };
+
+    const FILTER_THEMES = {
+      red: {
+        name: '紅色濾鏡',
+        icon: '🔴',
+        badgeBg: 'bg-rose-600',
+        overlayBg: 'bg-rose-600/60',
+        brightColors: ['red', 'white'],
+        darkColors: ['green', 'blue', 'black'],
+        brightName: '紅色',
+        tip: '在紅色濾鏡下，只有<strong>紅色與白色</strong>能穿透呈現紅色（亮），而<strong>綠、藍、黑</strong>會被吸收呈現黑色（暗）。'
+      },
+      green: {
+        name: '綠色濾鏡',
+        icon: '🟢',
+        badgeBg: 'bg-emerald-600',
+        overlayBg: 'bg-emerald-600/60',
+        brightColors: ['green', 'white'],
+        darkColors: ['red', 'blue', 'black'],
+        brightName: '綠色',
+        tip: '在綠色濾鏡下，只有<strong>綠色與白色</strong>能穿透呈現綠色（亮），而<strong>紅、藍、黑</strong>會被吸收呈現黑色（暗）。'
+      },
+      blue: {
+        name: '藍色濾鏡',
+        icon: '🔵',
+        badgeBg: 'bg-blue-600',
+        overlayBg: 'bg-blue-600/60',
+        brightColors: ['blue', 'white'],
+        darkColors: ['red', 'green', 'black'],
+        brightName: '藍色',
+        tip: '在藍色濾鏡下，只有<strong>藍色與白色</strong>能穿透呈現藍色（亮），而<strong>紅、綠、黑</strong>會被吸收呈現黑色（暗）。'
+      }
+    };
+
+    // --- 6. Initialization & Setup ---
+    // Helper: shuffle array in place
+    function shuffleArray(arr) {
+      for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+      }
+      return arr;
+    }
+
+    // 5x5 Canonical Digit Matrix definitions (3x5 centered in 5x5)
+    const CANONICAL_DIGIT_MATRICES = {
+      0: ['01110', '01010', '01010', '01010', '01110'], // 12 cells
+      1: ['00110', '00010', '00010', '00010', '11111'], // 10 cells (wide base!)
+      2: ['01110', '00010', '01110', '01000', '01110'], // 11 cells
+      3: ['01110', '00010', '01110', '00010', '01110'], // 11 cells
+      4: ['01010', '01010', '01111', '00010', '00010'], // 10 cells
+      5: ['01110', '01000', '01110', '00010', '01110'], // 11 cells
+      6: ['01110', '01000', '01110', '01010', '01110'], // 12 cells
+      7: ['11111', '00010', '00110', '00100', '00100'], // 10 cells
+      8: ['01110', '01010', '01110', '01010', '01110'], // 13 cells
+      9: ['01110', '01010', '01110', '00010', '01110']  // 12 cells
+    };
+
+    // Generate target filtered matrix (1 = Bright/Filter Color, 0 = Dark/Black)
+    function generateTargetFilteredMatrix(digit, digitColor) {
+      const pattern = CANONICAL_DIGIT_MATRICES[digit];
+      const matrix = Array(25).fill(0);
+      for (let r = 0; r < 5; r++) {
+        for (let c = 0; c < 5; c++) {
+          const idx = r * 5 + c;
+          const isDigit = (pattern[r][c] === '1');
+          if (digitColor === 'black') {
+            // Digit is Dark (0), Background is Bright (1)
+            matrix[idx] = isDigit ? 0 : 1;
+          } else {
+            // Digit is Bright (1), Background is Dark (0)
+            matrix[idx] = isDigit ? 1 : 0;
+          }
+        }
+      }
+      return matrix;
+    }
+
+    // Build the 25 cells inside #reference-grid
+    function setupReferenceGridDOM() {
+      if (!referenceGridEl) return;
+      referenceGridEl.innerHTML = '';
+      for (let i = 0; i < 25; i++) {
+        const cell = document.createElement('div');
+        cell.className = 'aspect-square rounded-xl border border-slate-700 bg-slate-900 flex items-center justify-center transition overflow-hidden select-none';
+        const inner = document.createElement('div');
+        inner.className = 'w-full h-full rounded-lg transition-all duration-200';
+        cell.appendChild(inner);
+        referenceGridEl.appendChild(cell);
+      }
+    }
+
+    // Render Target Filtered Screen (套上濾鏡後的效果畫面)
+    function renderTargetScreenUI() {
+      if (!referenceGridEl) return;
+      const fTheme = FILTER_THEMES[gameState.targetFilter];
+      const matrix = gameState.targetFilteredMatrix;
+
+      // Update Target Screen Card Filter Badge
+      const pill = document.getElementById('target-screen-filter-pill');
+      const pillName = document.getElementById('target-screen-filter-name');
+      if (pill && pillName) {
+        pill.className = `text-[11px] font-black px-2.5 py-0.5 rounded-full ${fTheme.badgeBg} text-white shadow-sm flex items-center gap-1`;
+        pillName.textContent = fTheme.name;
+        pill.firstElementChild.textContent = fTheme.icon;
+      }
+
+      // Update Deduction Guide info
+      const dedMode = document.getElementById('target-deduction-mode');
+      const legBrightDot = document.getElementById('legend-bright-dot');
+      const legBrightDesc = document.getElementById('legend-bright-desc');
+      const legDarkDesc = document.getElementById('legend-dark-desc');
+      if (dedMode) {
+        dedMode.textContent = gameState.targetDigitColor === 'black' ? '黑色字 / 亮色底' : `${fTheme.brightName}字 / 黑色底`;
+      }
+      if (legBrightDot) {
+        legBrightDot.className = `w-3 h-3 rounded-sm ${fTheme.badgeBg} flex-shrink-0 mt-0.5`;
+      }
+      if (legBrightDesc) {
+        legBrightDesc.innerHTML = `<strong>亮色格：</strong>在白光下可用【${fTheme.brightName}】或【白色】方塊`;
+      }
+      if (legDarkDesc) {
+        const darkNames = fTheme.darkColors.map(c => COLOR_NAMES[c]).join('、');
+        legDarkDesc.innerHTML = `<strong>暗色格：</strong>在白光下可用【${darkNames}】方塊`;
+      }
+
+      // Render 25 cells of the target filtered screen in realistic filtered appearance
+      for (let i = 0; i < 25; i++) {
+        const cell = referenceGridEl.children[i];
+        if (!cell) continue;
+        const inner = cell.firstElementChild;
+        const isBright = (matrix[i] === 1);
+
+        inner.className = 'w-full h-full rounded-lg transition-all duration-200';
+        cell.className = 'aspect-square rounded-xl border flex items-center justify-center overflow-hidden select-none';
+
+        if (isBright) {
+          if (gameState.targetFilter === 'red') {
+            inner.classList.add('bg-rose-600', 'shadow-inner');
+            cell.classList.add('border-rose-400');
+          } else if (gameState.targetFilter === 'green') {
+            inner.classList.add('bg-emerald-500', 'shadow-inner');
+            cell.classList.add('border-emerald-400');
+          } else {
+            inner.classList.add('bg-blue-600', 'shadow-inner');
+            cell.classList.add('border-blue-400');
+          }
+        } else {
+          inner.classList.add('bg-slate-950');
+          cell.classList.add('border-slate-800');
+        }
+      }
+    }
+
+    function initApp() {
+      setupReferenceGridDOM();
+      setupGridDOM();
+      setupPaletteListeners();
+      setupActionListeners();
+      renderGuideDigits();
+      startNewGame();
+    }
+
+    // Build the 25 cells inside #game-grid
+    function setupGridDOM() {
+      gameGridEl.innerHTML = '';
+      for (let i = 0; i < 25; i++) {
+        const cell = document.createElement('div');
+        cell.className = 'board-cell rounded-2xl border-2 border-slate-700 bg-slate-900/90 flex items-center justify-center cursor-pointer transition relative overflow-hidden select-none';
+        cell.dataset.index = i;
+
+        // Subtle coordinate indicator for students
+        const r = Math.floor(i / 5) + 1;
+        const c = (i % 5) + 1;
+        cell.title = `第 ${r} 列, 第 ${c} 欄`;
+
+        // Inner content
+        const inner = document.createElement('div');
+        inner.className = 'cell-inner w-full h-full rounded-xl flex items-center justify-center transition-all duration-200';
+        cell.appendChild(inner);
+
+        // Cell pointer/touch events
+        cell.addEventListener('pointerdown', (e) => onCellPointerDown(e, i));
+        cell.addEventListener('click', () => onCellClick(i));
+
+        gameGridEl.appendChild(cell);
+      }
+    }
+
+    // Render guide digit thumbnails in Guide Modal
+    function renderGuideDigits() {
+      guideDigitsGrid.innerHTML = '';
+      for (let d = 0; d <= 9; d++) {
+        const card = document.createElement('div');
+        card.className = 'flex flex-col items-center bg-white p-2 rounded-xl shadow-sm border border-slate-200';
+        
+        const title = document.createElement('span');
+        title.className = 'text-xs font-black text-slate-800 mb-1';
+        title.textContent = `數字 ${d}`;
+        card.appendChild(title);
+
+        const miniGrid = document.createElement('div');
+        miniGrid.className = 'grid grid-cols-5 gap-0.5 bg-slate-800 p-1 rounded-lg';
+        
+        // Use primary canonical pattern
+        const pat = DIGIT_PATTERNS[d][0].split('/');
+        for (let r = 0; r < 5; r++) {
+          for (let c = 0; c < 5; c++) {
+            const pixel = document.createElement('div');
+            pixel.className = 'w-2 h-2 rounded-[2px]';
+            // Align 3x5 centered in 5x5: row r, col c-1
+            let isForeground = false;
+            if (pat.length === 5 && pat[0].length === 3) {
+              if (c >= 1 && c <= 3) {
+                isForeground = (pat[r][c - 1] === '1');
+              }
+            } else if (pat.length === 5 && pat[0].length === 4) {
+              if (c >= 0 && c <= 3) {
+                isForeground = (pat[r][c] === '1');
+              }
+            } else if (pat.length === 5 && pat[0].length === 1) {
+              if (c === 2) isForeground = true;
+            } else {
+              // fallback general
+              isForeground = (r < pat.length && c < pat[r].length && pat[r][c] === '1');
+            }
+
+            if (isForeground) {
+              pixel.classList.add('bg-amber-400');
+            } else {
+              pixel.classList.add('bg-slate-700');
+            }
+            miniGrid.appendChild(pixel);
+          }
+        }
+        card.appendChild(miniGrid);
+        guideDigitsGrid.appendChild(card);
+      }
+    }
+
+    // --- 7. Level Flow Management ---
+    function startNewGame() {
+      gameState.level = 1;
+      gameState.levelHistory = [];
+      initLevel(1);
+    }
+
+    function initLevel(levelNum) {
+      gameState.level = levelNum;
+      gameState.filterActive = false;
+      gameState.levelCompleted = false;
+      gameState.board = Array(25).fill(null);
+      gameState.inventory = { ...INITIAL_INVENTORY };
+      levelClearCard.classList.add('hidden');
+
+      // Random target digit (0-9) avoiding recent if possible
+      const pastDigits = gameState.levelHistory.map(h => h.digit);
+      let candidateDigits = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].filter(d => !pastDigits.includes(d));
+      if (candidateDigits.length === 0) candidateDigits = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+      gameState.targetDigit = candidateDigits[Math.floor(Math.random() * candidateDigits.length)];
+
+      // Random target filter (red, green, blue)
+      const pastFilters = gameState.levelHistory.map(h => h.filter);
+      let candidateFilters = ['red', 'green', 'blue'].filter(f => !pastFilters.includes(f));
+      if (candidateFilters.length === 0) candidateFilters = ['red', 'green', 'blue'];
+      gameState.targetFilter = candidateFilters[Math.floor(Math.random() * candidateFilters.length)];
+
+      // Random target digit color: 'black' (黑色) or 'filter' (濾鏡亮色)
+      if (levelNum === 1) {
+        gameState.targetDigitColor = Math.random() < 0.5 ? 'black' : 'filter';
+      } else {
+        const lastColor = gameState.levelHistory[gameState.levelHistory.length - 1]?.digitColor;
+        gameState.targetDigitColor = (lastColor === 'black') ? 'filter' : 'black';
+      }
+
+      // Generate target filtered matrix (the optical target image)
+      gameState.targetFilteredMatrix = generateTargetFilteredMatrix(gameState.targetDigit, gameState.targetDigitColor);
+      gameState.matchCount = 0;
+
+      // Update UI components
+      updateProgressUI();
+      updateTargetUI();
+      updateInventoryUI();
+      renderBoardUI();
+      renderTargetScreenUI();
+      updateDynamicRuleUI();
+
+      // Show Mission Start Modal
+      modalLevelBadge.textContent = `第 ${gameState.level} 關 / 共 ${gameState.totalLevels} 關`;
+      modalTargetDigit.textContent = gameState.targetDigit;
+      const fTheme = FILTER_THEMES[gameState.targetFilter];
+      modalTargetFilter.textContent = `${fTheme.icon} ${fTheme.name}`;
+      modalTargetFilter.className = `text-xs sm:text-sm font-black ${gameState.targetFilter === 'red' ? 'text-rose-600' : gameState.targetFilter === 'green' ? 'text-emerald-600' : 'text-blue-600'} mt-1.5`;
+
+      const isTargetBlack = gameState.targetDigitColor === 'black';
+      modalTargetColor.textContent = isTargetBlack ? '⚫ 黑色字' : `${fTheme.icon} ${fTheme.brightName}字 (濾鏡色)`;
+      modalTargetColor.className = `text-xs sm:text-sm font-black ${isTargetBlack ? 'text-slate-900' : (gameState.targetFilter === 'red' ? 'text-rose-600' : gameState.targetFilter === 'green' ? 'text-emerald-600' : 'text-blue-600')} mt-1.5`;
+
+      const tipText = isTargetBlack
+        ? `💡 <strong>光學與空間密技：</strong>目標為【<strong>黑色</strong>】數字【${gameState.targetDigit}】！注意另外兩種彩色方塊（如綠+藍共 10 個）在濾鏡下都會變黑，因此<strong>數字筆畫必須至少佔 10 格</strong>才能把非濾鏡彩色方塊用完喔！（如數字 1 可排成 10 格寬底座字形）`
+        : `💡 <strong>光學提示：</strong>本關目標是呈現【<strong>${fTheme.brightName}（濾鏡亮色）</strong>】的數字【${gameState.targetDigit}】！數字筆畫使用<strong>${fTheme.brightName}與白色</strong>方塊，背景使用<strong>綠、藍、黑</strong>方塊！`;
+      modalPhysicsTip.innerHTML = tipText;
+      modalMission.classList.remove('hidden');
+
+      // Feedback initial state
+      setFeedback('闖關指引', `本關請排列方塊，使套上【${fTheme.name}】時呈現出數字【${gameState.targetDigit}】！`, '💡');
+    }
+
+    function updateProgressUI() {
+      for (let s = 1; s <= 3; s++) {
+        const stepEl = document.getElementById(`step-${s}`);
+        if (s < gameState.level) {
+          stepEl.className = 'w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold bg-emerald-500 text-white shadow';
+          stepEl.innerHTML = '✓';
+        } else if (s === gameState.level) {
+          stepEl.className = 'w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold bg-white text-indigo-900 shadow ring-2 ring-amber-400';
+          stepEl.innerHTML = s;
+        } else {
+          stepEl.className = 'w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold bg-indigo-800 text-indigo-300';
+          stepEl.innerHTML = s;
+        }
+      }
+    }
+
+    function updateTargetUI() {
+      targetDigitBadge.textContent = gameState.targetDigit;
+      const fTheme = FILTER_THEMES[gameState.targetFilter];
+      targetFilterBadge.className = `px-2.5 py-1 rounded-lg font-bold text-xs flex items-center gap-1.5 shadow ${fTheme.badgeBg} text-white`;
+      targetFilterText.textContent = fTheme.name;
+
+      // Target Digit Color Badge
+      if (gameState.targetDigitColor === 'black') {
+        targetColorBadge.className = 'px-2.5 py-1 rounded-lg font-bold text-xs flex items-center gap-1.5 shadow bg-slate-950 text-white border border-slate-700';
+        targetColorDot.className = 'w-2.5 h-2.5 rounded-full bg-slate-400';
+        targetColorText.textContent = '黑色字 ⚫';
+      } else {
+        targetColorBadge.className = `px-2.5 py-1 rounded-lg font-bold text-xs flex items-center gap-1.5 shadow ${fTheme.badgeBg} text-white border border-white/30`;
+        targetColorDot.className = 'w-2.5 h-2.5 rounded-full bg-white animate-pulse';
+        targetColorText.textContent = `${fTheme.brightName}字 (濾鏡色)`;
+      }
+
+      // Next Level button label (Level 3 becomes final completion)
+      if (gameState.level === gameState.totalLevels) {
+        manualNextText.textContent = '完成挑戰';
+        manualNextIcon.textContent = '🏆';
+      } else {
+        manualNextText.textContent = '進入下一關';
+        manualNextIcon.textContent = '➔';
+      }
+    }
+
+    function updateDynamicRuleUI() {
+      const f = FILTER_THEMES[gameState.targetFilter];
+      const isTargetBlack = gameState.targetDigitColor === 'black';
+      const targetColorDesc = isTargetBlack ? '黑色 (暗色字)' : `${f.brightName} (濾鏡亮色字)`;
+      const digitRoleDesc = isTargetBlack
+        ? `數字筆畫需排【${f.darkColors.map(c => COLOR_NAMES[c]).join('、')}】，背景排【${f.brightColors.map(c => COLOR_NAMES[c]).join('、')}】`
+        : `數字筆畫需排【${f.brightColors.map(c => COLOR_NAMES[c]).join('、')}】，背景排【${f.darkColors.map(c => COLOR_NAMES[c]).join('、')}】`;
+
+      ruleDynamicBox.innerHTML = `
+        <div class="font-bold text-slate-800 flex items-center justify-between">
+          <span>${f.icon} 濾鏡：<strong class="${gameState.targetFilter === 'red' ? 'text-rose-600' : gameState.targetFilter === 'green' ? 'text-emerald-600' : 'text-blue-600'}">${f.name}</strong></span>
+          <span class="bg-indigo-100 text-indigo-900 px-2 py-0.5 rounded text-[11px] font-black">字色：${targetColorDesc}</span>
+        </div>
+        <p class="text-slate-600 text-[11px]">${f.tip}</p>
+        <div class="p-2 rounded-xl bg-slate-100 font-semibold text-[11px] text-slate-800 leading-snug space-y-1">
+          <div>💡 <strong>配置秘訣：</strong>${digitRoleDesc}</div>
+          <div class="text-rose-700">🔒 <strong>硬性限制：</strong>紅綠藍各 5 個必須全部放進盤面；黑白方塊不限數量，填滿其餘 10 格即可！</div>
+        </div>
+      `;
+    }
+
+    // --- 8. Board Rendering & Optical Filter Simulator ---
+    function renderBoardUI() {
+      const fTheme = FILTER_THEMES[gameState.targetFilter];
+      const isFiltered = gameState.filterActive;
+
+      // Update Filter Overlay Layer
+      if (isFiltered) {
+        filterOverlayEl.className = `absolute inset-0 rounded-3xl pointer-events-none opacity-100 transition-opacity duration-300 flex flex-col items-center justify-between p-3 filter-acrylic overflow-hidden ${fTheme.overlayBg}`;
+        filterOverlayTitleEl.textContent = `${fTheme.name}透視中`;
+        filterStatusIndicatorEl.className = `text-xs font-semibold px-2.5 py-1 rounded-full ${fTheme.badgeBg} text-white flex items-center gap-1.5 shadow-sm transition`;
+        filterStatusIndicatorEl.innerHTML = `<span class="w-2 h-2 rounded-full bg-white animate-ping"></span><span>${fTheme.name}開啟中</span>`;
+        filterBtnIcon.textContent = '👓';
+        filterBtnText.textContent = '關閉濾鏡';
+      } else {
+        filterOverlayEl.className = 'absolute inset-0 rounded-3xl pointer-events-none opacity-0 transition-opacity duration-300 flex flex-col items-center justify-between p-3 filter-acrylic overflow-hidden';
+        filterStatusIndicatorEl.className = 'text-xs font-semibold px-2.5 py-1 rounded-full bg-slate-200 text-slate-600 flex items-center gap-1.5 transition';
+        filterStatusIndicatorEl.innerHTML = '<span class="w-2 h-2 rounded-full bg-slate-400"></span><span>正常白光視角</span>';
+        filterBtnIcon.textContent = '🔍';
+        filterBtnText.textContent = '開濾鏡檢查';
+      }
+
+      // Render cells
+      let placedCount = 0;
+      for (let i = 0; i < 25; i++) {
+        const cell = gameGridEl.children[i];
+        const inner = cell.firstElementChild;
+        const color = gameState.board[i];
+
+        // Reset classes
+        inner.className = 'cell-inner w-full h-full rounded-xl flex items-center justify-center transition-all duration-200 font-bold text-sm select-none';
+        cell.className = 'board-cell rounded-2xl border-2 flex items-center justify-center cursor-pointer transition relative overflow-hidden select-none';
+
+        if (color) {
+          placedCount++;
+          if (isFiltered) {
+            // Apply Physical Filter Absorption / Transmission Law
+            const isBright = fTheme.brightColors.includes(color);
+            if (isBright) {
+              // Appears bright filter color
+              if (gameState.targetFilter === 'red') {
+                inner.classList.add('bg-rose-600', 'text-white', 'shadow-inner');
+                cell.classList.add('border-rose-400');
+              } else if (gameState.targetFilter === 'green') {
+                inner.classList.add('bg-emerald-500', 'text-white', 'shadow-inner');
+                cell.classList.add('border-emerald-400');
+              } else {
+                inner.classList.add('bg-blue-600', 'text-white', 'shadow-inner');
+                cell.classList.add('border-blue-400');
+              }
+              inner.textContent = '';
+            } else {
+              // Absorbed -> Appears pitch black
+              inner.classList.add('bg-slate-950', 'text-slate-800');
+              cell.classList.add('border-slate-800');
+              inner.textContent = '';
+            }
+          } else {
+            // Normal white light view: show true block color
+            if (color === 'red') {
+              inner.classList.add('bg-red-500', 'text-white', 'shadow-md');
+              cell.classList.add('border-red-600');
+              inner.textContent = '';
+            } else if (color === 'green') {
+              inner.classList.add('bg-emerald-500', 'text-white', 'shadow-md');
+              cell.classList.add('border-emerald-600');
+              inner.textContent = '';
+            } else if (color === 'blue') {
+              inner.classList.add('bg-blue-500', 'text-white', 'shadow-md');
+              cell.classList.add('border-blue-600');
+              inner.textContent = '';
+            } else if (color === 'black') {
+              inner.classList.add('bg-slate-800', 'text-white', 'shadow-md');
+              cell.classList.add('border-slate-900');
+              inner.textContent = '';
+            } else if (color === 'white') {
+              inner.classList.add('bg-white', 'text-slate-300', 'shadow-md', 'border', 'border-slate-200');
+              cell.classList.add('border-slate-300');
+              inner.textContent = '';
+            }
+          }
+        } else {
+          // Empty cell
+          cell.classList.add('border-slate-700', 'bg-slate-900/60');
+          inner.textContent = '';
+        }
+      }
+
+      boardCountPill.textContent = `已放: ${placedCount} / 25`;
+
+      // Calculate live match with target filtered matrix
+      let matchCount = 0;
+      for (let i = 0; i < 25; i++) {
+        const color = gameState.board[i];
+        if (color) {
+          const isBright = fTheme.brightColors.includes(color);
+          const cellOpticalVal = isBright ? 1 : 0;
+          if (cellOpticalVal === gameState.targetFilteredMatrix[i]) {
+            matchCount++;
+          }
+        }
+      }
+      gameState.matchCount = matchCount;
+
+      if (matchScorePill) {
+        if (matchCount === 25) {
+          matchScorePill.textContent = '🌟 25/25 完美吻合！';
+          matchScorePill.className = 'text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-sm animate-pulse';
+          if (playerBoardFrame) playerBoardFrame.className = 'relative bg-slate-800 p-3.5 rounded-3xl shadow-xl border-4 border-emerald-400 ring-4 ring-emerald-300/60 w-full max-w-[420px] transition-all';
+        } else {
+          matchScorePill.textContent = `吻合度: ${matchCount} / 25 格`;
+          matchScorePill.className = 'text-xs font-bold px-2 py-0.5 rounded-full bg-slate-200 text-slate-700 transition';
+          if (playerBoardFrame) playerBoardFrame.className = 'relative bg-slate-800 p-3.5 rounded-3xl shadow-xl border-4 border-slate-700 w-full max-w-[420px] transition-all';
+        }
+      }
+    }
+
+    function updateInventoryUI() {
+      // Count how many of each color are currently placed on the board
+      const placedCounts = { red: 0, green: 0, blue: 0, black: 0, white: 0 };
+      gameState.board.forEach(c => { if (c && placedCounts[c] !== undefined) placedCounts[c]++; });
+
+      for (const col of ['red', 'green', 'blue', 'black', 'white']) {
+        const count = gameState.inventory[col];
+        const countEl = document.getElementById(`count-${col}`);
+        const itemEl = document.getElementById(`palette-${col}`);
+
+        if (countEl) {
+          if (col === 'black' || col === 'white') {
+            countEl.textContent = '∞';
+            countEl.title = `已放置 ${placedCounts[col]} 個 (不限數量)`;
+          } else {
+            countEl.textContent = count;
+          }
+        }
+        
+        if (itemEl) {
+          // Red, Green, Blue are disabled when count is 0
+          if (col !== 'black' && col !== 'white' && count <= 0) {
+            itemEl.classList.add('opacity-40', 'pointer-events-none');
+          } else {
+            itemEl.classList.remove('opacity-40', 'pointer-events-none');
+          }
+
+          // Active brush ring
+          if (!gameState.eraserActive && gameState.activeBrush === col) {
+            itemEl.classList.add('ring-4', 'ring-indigo-500', 'border-indigo-500');
+          } else {
+            itemEl.classList.remove('ring-4', 'ring-indigo-500', 'border-indigo-500');
+          }
+        }
+      }
+
+      // Update RGB Constraint Tracker Bar
+      const redPlaced = 5 - gameState.inventory.red;
+      const greenPlaced = 5 - gameState.inventory.green;
+      const bluePlaced = 5 - gameState.inventory.blue;
+      const allRgbUsed = (gameState.inventory.red === 0 && gameState.inventory.green === 0 && gameState.inventory.blue === 0);
+
+      const rgbBar = document.getElementById('rgb-requirement-bar');
+      const rgbIcon = document.getElementById('rgb-icon');
+      const rgbMainText = document.getElementById('rgb-main-text');
+      const bRed = document.getElementById('badge-red-status');
+      const bGreen = document.getElementById('badge-green-status');
+      const bBlue = document.getElementById('badge-blue-status');
+
+      if (bRed) {
+        bRed.textContent = `🔴 紅 ${redPlaced}/5` + (redPlaced === 5 ? ' ✓' : '');
+        bRed.className = redPlaced === 5 
+          ? 'px-1.5 py-0.5 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold'
+          : 'px-1.5 py-0.5 rounded-md bg-rose-100 text-rose-800 border border-rose-200';
+      }
+      if (bGreen) {
+        bGreen.textContent = `🟢 綠 ${greenPlaced}/5` + (greenPlaced === 5 ? ' ✓' : '');
+        bGreen.className = greenPlaced === 5 
+          ? 'px-1.5 py-0.5 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold'
+          : 'px-1.5 py-0.5 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-200';
+      }
+      if (bBlue) {
+        bBlue.textContent = `🔵 藍 ${bluePlaced}/5` + (bluePlaced === 5 ? ' ✓' : '');
+        bBlue.className = bluePlaced === 5 
+          ? 'px-1.5 py-0.5 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold'
+          : 'px-1.5 py-0.5 rounded-md bg-blue-100 text-blue-800 border border-blue-200';
+      }
+
+      if (rgbBar && rgbIcon && rgbMainText) {
+        if (allRgbUsed) {
+          rgbBar.className = 'w-full max-w-[420px] mb-3 px-3 py-2 rounded-2xl bg-emerald-50 border border-emerald-300 text-xs flex flex-wrap items-center justify-between gap-1.5 transition shadow-sm';
+          rgbIcon.textContent = '🎉';
+          rgbMainText.textContent = '紅綠藍三色已全數用完：';
+        } else {
+          rgbBar.className = 'w-full max-w-[420px] mb-3 px-3 py-2 rounded-2xl bg-amber-50 border border-amber-200 text-xs flex flex-wrap items-center justify-between gap-1.5 transition shadow-sm';
+          rgbIcon.textContent = '⚠️';
+          rgbMainText.textContent = '紅綠藍三色必須全用：';
+        }
+      }
+
+      // Eraser state
+      if (gameState.eraserActive) {
+        btnEraser.classList.add('bg-rose-100', 'border-rose-400', 'text-rose-800', 'ring-2', 'ring-rose-400');
+        activeBrushBadge.textContent = '🧹 橡皮擦';
+        activeBrushBadge.className = 'px-2 py-0.5 rounded-lg bg-rose-100 text-rose-800 font-bold border border-rose-300';
+      } else {
+        btnEraser.classList.remove('bg-rose-100', 'border-rose-400', 'text-rose-800', 'ring-2', 'ring-rose-400');
+        const colName = COLOR_NAMES[gameState.activeBrush];
+        const badgeColors = {
+          red: 'bg-rose-100 text-rose-800 border-rose-300',
+          green: 'bg-emerald-100 text-emerald-800 border-emerald-300',
+          blue: 'bg-blue-100 text-blue-800 border-blue-300',
+          black: 'bg-slate-200 text-slate-800 border-slate-400',
+          white: 'bg-white text-slate-700 border-slate-300'
+        };
+        activeBrushBadge.textContent = `${COLOR_NAMES[gameState.activeBrush]}方塊`;
+        activeBrushBadge.className = `px-2 py-0.5 rounded-lg font-bold border ${badgeColors[gameState.activeBrush] || 'bg-slate-100'}`;
+      }
+    }
+
+    // --- 9. User Interaction & Board Placement ---
+    function onCellClick(index) {
+      // If filter is currently on, turn off filter to let user edit
+      if (gameState.filterActive) {
+        gameState.filterActive = false;
+        renderBoardUI();
+      
+      }
+
+      const currentColor = gameState.board[index];
+
+      // If eraser active, remove block
+      if (gameState.eraserActive) {
+        if (currentColor) {
+          if (currentColor !== 'black' && currentColor !== 'white') {
+            gameState.inventory[currentColor]++;
+          }
+          gameState.board[index] = null;
+          sfx.playPop();
+          updateInventoryUI();
+          renderBoardUI();
+      
+        }
+        return;
+      }
+
+      // If active brush selected
+      const targetColor = gameState.activeBrush;
+      if (currentColor === targetColor) {
+        // Clicking same color again removes it back to tray (convenient toggle)
+        if (currentColor !== 'black' && currentColor !== 'white') {
+          gameState.inventory[currentColor]++;
+        }
+        gameState.board[index] = null;
+        sfx.playPop();
+      } else {
+        // Check inventory for finite colors (Red, Green, Blue)
+        if (targetColor !== 'black' && targetColor !== 'white' && gameState.inventory[targetColor] <= 0) {
+          setFeedback('方塊已用盡', `庫存中的【${COLOR_NAMES[targetColor]}】方塊已經全部用完了喔！`, '⚠️');
+          return;
+        }
+
+        // Return old color to inventory if replacing
+        if (currentColor && currentColor !== 'black' && currentColor !== 'white') {
+          gameState.inventory[currentColor]++;
+        }
+
+        // Place new color
+        if (targetColor !== 'black' && targetColor !== 'white') {
+          gameState.inventory[targetColor]--;
+        }
+        gameState.board[index] = targetColor;
+        sfx.playClick();
+      }
+
+      updateInventoryUI();
+      renderBoardUI();
+      
+    }
+
+    // Clear entire board
+    function clearBoard() {
+      let cleared = false;
+      for (let i = 0; i < 25; i++) {
+        const c = gameState.board[i];
+        if (c) {
+          if (c !== 'black' && c !== 'white') {
+            gameState.inventory[c]++;
+          }
+          gameState.board[i] = null;
+          cleared = true;
+        }
+      }
+      if (cleared) sfx.playPop();
+      gameState.filterActive = false;
+      updateInventoryUI();
+      renderBoardUI();
+      
+      setFeedback('已重設方格', '方格盤已清空，所有方塊已放回庫存中。', '🔄');
+    }
+
+    // --- 10. Pointer / Touch Drag and Drop Implementation ---
+    function setupPaletteListeners() {
+      const paletteItems = document.querySelectorAll('.palette-item');
+      paletteItems.forEach(item => {
+        const color = item.dataset.color;
+        
+        // Tap to select active brush
+        item.addEventListener('click', () => {
+          gameState.eraserActive = false;
+          gameState.activeBrush = color;
+          sfx.playClick();
+          updateInventoryUI();
+        });
+
+        // Pointer down for Drag and Drop (Mouse & Touch)
+        item.addEventListener('pointerdown', (e) => onPalettePointerDown(e, color));
+      });
+    }
+
+    function onPalettePointerDown(e, color) {
+      if (color !== 'black' && color !== 'white' && gameState.inventory[color] <= 0) return;
+      
+      // Turn off filter if open
+      if (gameState.filterActive) {
+        gameState.filterActive = false;
+        renderBoardUI();
+      
+      }
+
+      pointerDragState = {
+        type: 'palette',
+        color: color,
+        originIndex: null
+      };
+
+      showDragGhost(e.clientX, e.clientY, color);
+      window.addEventListener('pointermove', onWindowPointerMove);
+      window.addEventListener('pointerup', onWindowPointerUp);
+    }
+
+    function onCellPointerDown(e, index) {
+      const color = gameState.board[index];
+      if (!color) return; // empty cell, standard click handles placement
+
+      // Allow dragging existing placed tile to move/swap
+      pointerDragState = {
+        type: 'cell',
+        color: color,
+        originIndex: index
+      };
+
+      // Temporarily mark for drag
+      showDragGhost(e.clientX, e.clientY, color);
+      window.addEventListener('pointermove', onWindowPointerMove);
+      window.addEventListener('pointerup', onWindowPointerUp);
+    }
+
+    function showDragGhost(x, y, color) {
+      dragGhost.style.display = 'flex';
+      dragGhost.style.left = `${x}px`;
+      dragGhost.style.top = `${y}px`;
+      
+      dragGhost.className = 'w-14 h-14 rounded-2xl shadow-2xl border-4 border-white flex items-center justify-center font-bold text-white text-xl z-50';
+      if (color === 'red') dragGhost.classList.add('bg-red-500');
+      else if (color === 'green') dragGhost.classList.add('bg-emerald-500');
+      else if (color === 'blue') dragGhost.classList.add('bg-blue-500');
+      else if (color === 'black') dragGhost.classList.add('bg-slate-800');
+      else if (color === 'white') dragGhost.classList.add('bg-white', 'text-slate-700', 'border-slate-300');
+      
+      dragGhost.textContent = COLOR_NAMES[color]?.[0] || '';
+    }
+
+    function onWindowPointerMove(e) {
+      if (!pointerDragState) return;
+      dragGhost.style.left = `${e.clientX}px`;
+      dragGhost.style.top = `${e.clientY}px`;
+    }
+
+    function onWindowPointerUp(e) {
+      if (!pointerDragState) return;
+
+      // Hide ghost
+      dragGhost.style.display = 'none';
+
+      // Find drop target under cursor
+      const targetEl = document.elementFromPoint(e.clientX, e.clientY);
+      const cellTarget = targetEl ? targetEl.closest('.board-cell') : null;
+
+      if (cellTarget && cellTarget.dataset.index !== undefined) {
+        const destIndex = parseInt(cellTarget.dataset.index, 10);
+        const color = pointerDragState.color;
+
+        if (pointerDragState.type === 'palette') {
+          // Dropped from palette into grid cell
+          const canPlace = (color === 'black' || color === 'white' || gameState.inventory[color] > 0);
+          if (canPlace) {
+            const oldColor = gameState.board[destIndex];
+            if (oldColor && oldColor !== 'black' && oldColor !== 'white') {
+              gameState.inventory[oldColor]++;
+            }
+            if (color !== 'black' && color !== 'white') {
+              gameState.inventory[color]--;
+            }
+            gameState.board[destIndex] = color;
+            sfx.playClick();
+          }
+        } else if (pointerDragState.type === 'cell') {
+          // Moved from one cell to another cell
+          const origIdx = pointerDragState.originIndex;
+          if (origIdx !== destIndex) {
+            const targetOldColor = gameState.board[destIndex];
+            gameState.board[destIndex] = color;
+            gameState.board[origIdx] = targetOldColor; // swap
+            sfx.playClick();
+          }
+        }
+      } else {
+        // Dropped outside grid
+        if (pointerDragState.type === 'cell') {
+          // Dragged out of board -> return to inventory
+          const origIdx = pointerDragState.originIndex;
+          const color = pointerDragState.color;
+          gameState.board[origIdx] = null;
+          if (color !== 'black' && color !== 'white') {
+            gameState.inventory[color]++;
+          }
+          sfx.playPop();
+        }
+      }
+
+      pointerDragState = null;
+      window.removeEventListener('pointermove', onWindowPointerMove);
+      window.removeEventListener('pointerup', onWindowPointerUp);
+
+      updateInventoryUI();
+      renderBoardUI();
+      
+    }
+
+    // --- 11. Optical Filter Inspection & Verification Engine ---
+    function toggleFilterInspection() {
+      gameState.filterActive = !gameState.filterActive;
+      sfx.playFilterShimmer();
+      renderBoardUI();
+      
+
+      if (gameState.filterActive) {
+        // Perform digit verification
+        verifyFilterSolution();
+      }
+    }
+
+    function verifyFilterSolution() {
+      const fTheme = FILTER_THEMES[gameState.targetFilter];
+
+      // 1. Check RGB mandatory usage requirement first
+      const allRgbUsed = (gameState.inventory.red === 0 && gameState.inventory.green === 0 && gameState.inventory.blue === 0);
+      if (!allRgbUsed) {
+        const unplaced = [];
+        if (gameState.inventory.red > 0) unplaced.push(`紅方塊還差 ${gameState.inventory.red} 個`);
+        if (gameState.inventory.green > 0) unplaced.push(`綠方塊還差 ${gameState.inventory.green} 個`);
+        if (gameState.inventory.blue > 0) unplaced.push(`藍方塊還差 ${gameState.inventory.blue} 個`);
+
+        setFeedback(
+          '未滿足紅綠藍全用規則',
+          `題目規定「紅、綠、藍」三原色方塊【必須各用滿 5 個】！目前${unplaced.join('、')}，請先全數放進方格中再檢查喔！`,
+          '⚠️'
+        );
+        return;
+      }
+
+      // 2. Check if all 25 cells are filled
+      const placedCount = gameState.board.filter(c => c !== null).length;
+      if (placedCount < 25) {
+        setFeedback(
+          '方格盤尚未放滿',
+          `目前還有 ${25 - placedCount} 個空格尚未放置方塊。黑白方塊不限數量，請全部放滿 25 格後再開濾鏡比對！`,
+          '⏳'
+        );
+        return;
+      }
+
+      // 3. Check optical match with target filtered matrix
+      const target = gameState.targetDigit;
+      const reqColor = gameState.targetDigitColor;
+      const isExactMatch = (gameState.matchCount === 25);
+
+      if (isExactMatch) {
+        handleLevelSuccess(target, reqColor);
+      } else {
+        const diffCount = 25 - gameState.matchCount;
+        setFeedback(
+          '濾鏡效果與目標尚未完全吻合',
+          `目前套上濾鏡後的畫面與左側目標還有 ${diffCount} 格不相符。請比對左側目標畫面的明暗位置，調整你的方塊配置！`,
+          '🧐'
+        );
+      }
+    }
+
+    function handleLevelSuccess(digit, colorMode) {
+      gameState.levelCompleted = true;
+      sfx.playSuccess();
+      
+      // Fire confetti burst!
+      if (typeof confetti === 'function') {
+        confetti({
+          particleCount: 80,
+          spread: 70,
+          origin: { y: 0.6 }
+        });
+      }
+
+      const fTheme = FILTER_THEMES[gameState.targetFilter];
+      const colorDesc = (colorMode === 'black') ? '黑色' : `${fTheme.brightName}(濾鏡色)`;
+      setFeedback(
+        '🎉 成功做出與目標一模一樣的結果！',
+        `太厲害了！你在${fTheme.name}下呈現的光學透視畫面與目標畫面 100% 完全相符（成功顯現出【${colorDesc}】數字【${digit}】）！請點擊「進入下一關」！`,
+        '🌟'
+      );
+
+      // Show level clear card & pulse manual next button
+      levelClearCard.classList.remove('hidden');
+      btnManualNext.classList.add('ring-4', 'ring-emerald-300', 'animate-pulse');
+
+      // Record in history
+      if (gameState.levelHistory.length < gameState.level) {
+        gameState.levelHistory.push({
+          level: gameState.level,
+          digit: gameState.targetDigit,
+          filter: gameState.targetFilter,
+          filterName: fTheme.name,
+          digitColor: gameState.targetDigitColor,
+          digitColorDesc: colorDesc
+        });
+      }
+    }
+
+    function advanceToNextLevel() {
+      // Enforce the RGB all-used rule before advancing
+      const allRgbUsed = (gameState.inventory.red === 0 && gameState.inventory.green === 0 && gameState.inventory.blue === 0);
+      if (!allRgbUsed) {
+        const unplaced = [];
+        if (gameState.inventory.red > 0) unplaced.push(`紅方塊還差 ${gameState.inventory.red} 個`);
+        if (gameState.inventory.green > 0) unplaced.push(`綠方塊還差 ${gameState.inventory.green} 個`);
+        if (gameState.inventory.blue > 0) unplaced.push(`藍方塊還差 ${gameState.inventory.blue} 個`);
+
+        sfx.playPop();
+        setFeedback(
+          '還不能進入下一關喔！',
+          `規則嚴格要求「紅、綠、藍」三種顏色方塊【必須全部用完】！目前${unplaced.join('、')}，請將它們全數排入盤面後再通關！`,
+          '⚠️'
+        );
+        const rgbBar = document.getElementById('rgb-requirement-bar');
+        if (rgbBar) {
+          rgbBar.classList.add('ring-4', 'ring-rose-400');
+          setTimeout(() => rgbBar.classList.remove('ring-4', 'ring-rose-400'), 1000);
+        }
+        return;
+      }
+
+      const fTheme = FILTER_THEMES[gameState.targetFilter];
+      const colorDesc = (gameState.targetDigitColor === 'black') ? '黑色' : `${fTheme.brightName}(濾鏡色)`;
+
+      // Ensure level is recorded even if user self-judged without filter check
+      if (gameState.levelHistory.length < gameState.level) {
+        gameState.levelHistory.push({
+          level: gameState.level,
+          digit: gameState.targetDigit,
+          filter: gameState.targetFilter,
+          filterName: fTheme.name,
+          digitColor: gameState.targetDigitColor,
+          digitColorDesc: colorDesc
+        });
+      }
+
+      btnManualNext.classList.remove('ring-4', 'ring-emerald-300', 'animate-pulse');
+
+      if (gameState.level < gameState.totalLevels) {
+        initLevel(gameState.level + 1);
+      } else {
+        showFinalVictoryModal();
+      }
+    }
+
+    function showFinalVictoryModal() {
+      sfx.playVictory();
+      if (typeof confetti === 'function') {
+        confetti({
+          particleCount: 150,
+          spread: 100,
+          origin: { y: 0.5 }
+        });
+      }
+
+      victorySummaryList.innerHTML = '';
+      gameState.levelHistory.forEach((h, idx) => {
+        const item = document.createElement('div');
+        item.className = 'flex items-center justify-between p-2.5 rounded-xl bg-white border border-slate-100 shadow-sm';
+        item.innerHTML = `
+          <div class="flex items-center gap-2">
+            <span class="w-6 h-6 rounded-full bg-emerald-100 text-emerald-800 font-bold flex items-center justify-center text-xs">
+              ✓
+            </span>
+            <span class="font-bold text-slate-800">第 ${idx + 1} 關</span>
+          </div>
+          <div class="flex items-center gap-2.5 text-xs">
+            <span class="text-slate-600">濾鏡：<strong>${h.filterName}</strong></span>
+            <span class="text-slate-600">數字：<strong class="text-amber-600 font-black">${h.digit}</strong></span>
+            <span class="text-slate-600">字色：<strong>${h.digitColorDesc}</strong></span>
+          </div>
+        `;
+        victorySummaryList.appendChild(item);
+      });
+
+      modalVictory.classList.remove('hidden');
+    }
+
+    function setFeedback(title, msg, icon = '💡') {
+      feedbackTitle.textContent = title;
+      feedbackMsg.textContent = msg;
+      feedbackIcon.textContent = icon;
+    }
+
+    // --- 12. Setup Action & Modal Event Listeners ---
+    function setupActionListeners() {
+      btnToggleFilter.addEventListener('click', toggleFilterInspection);
+      btnClearBoard.addEventListener('click', clearBoard);
+      btnNextLevel.addEventListener('click', advanceToNextLevel);
+      btnManualNext.addEventListener('click', advanceToNextLevel);
+
+      // Eraser toggle
+      btnEraser.addEventListener('click', () => {
+        gameState.eraserActive = !gameState.eraserActive;
+        sfx.playClick();
+        updateInventoryUI();
+      });
+
+      // Sound mute toggle
+      btnSound.addEventListener('click', () => {
+        sfx.enabled = !sfx.enabled;
+        soundIcon.textContent = sfx.enabled ? '🔊' : '🔇';
+      });
+
+      // Mission Modal
+      btnStartLevel.addEventListener('click', () => {
+        modalMission.classList.add('hidden');
+        sfx.playClick();
+      });
+
+      // Guide Modal
+      btnGuide.addEventListener('click', () => {
+        modalGuide.classList.remove('hidden');
+        sfx.playClick();
+      });
+      btnShowFullTable.addEventListener('click', () => {
+        modalGuide.classList.remove('hidden');
+        sfx.playClick();
+      });
+      btnCloseGuide.addEventListener('click', () => modalGuide.classList.add('hidden'));
+      btnCloseGuideFooter.addEventListener('click', () => modalGuide.classList.add('hidden'));
+
+      // Rules Modal
+      btnHelp.addEventListener('click', () => {
+        modalRules.classList.remove('hidden');
+        sfx.playClick();
+      });
+      btnCloseRules.addEventListener('click', () => modalRules.classList.add('hidden'));
+      btnCloseRulesFooter.addEventListener('click', () => modalRules.classList.add('hidden'));
+
+      // Play Again
+      btnPlayAgain.addEventListener('click', () => {
+        modalVictory.classList.add('hidden');
+        startNewGame();
+      });
+    }
+
+    // Initialize application on page load
+    window.onload = initApp;
+  </script>
+</body>
+</html>
